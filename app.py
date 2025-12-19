@@ -1,17 +1,19 @@
 """
 Procesador de Picking List - Banchero Sanitarios
-Ordena por código viejo y agrupa líneas duplicadas sumando cantidades.
-Genera PDF con picking procesado + packing list original.
+- Ordena por código viejo
+- Agrupa duplicados sumando cantidades
+- Incluye packing list original
+- Layout vertical para impresión
 """
 import streamlit as st
 import pdfplumber
 import pandas as pd
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm, cm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from pypdf import PdfReader, PdfWriter
 from io import BytesIO
 import re
@@ -22,6 +24,35 @@ st.set_page_config(
     page_icon="📦",
     layout="wide"
 )
+
+
+def split_cod_viejo_articulo(resto):
+    """
+    Separa el código viejo del artículo.
+    El código viejo termina cuando empieza una palabra (mayúscula + minúscula)
+    o hay espacio/asterisco.
+    
+    Ejemplos:
+    - "TF02018Tee C/ Rosca..." -> ("TF02018", "Tee C/ Rosca...")
+    - "AW04026032Buje Reducción..." -> ("AW04026032", "Buje Reducción...")
+    """
+    if not resto:
+        return '', ''
+    
+    # Buscar mayúscula seguida de minúscula (inicio de palabra: Tee, Buje, Codo)
+    match = re.search(r'[A-Z][a-záéíóúñ]', resto)
+    if match:
+        pos = match.start()
+        if pos > 0:
+            return resto[:pos].strip(), resto[pos:]
+    
+    # Buscar espacio, asterisco o comillas
+    match = re.search(r'[\s\*\"]', resto)
+    if match:
+        pos = match.start()
+        return resto[:pos].strip(), resto[pos:].strip()
+    
+    return resto.strip(), ''
 
 
 def extract_picking_data(pdf_file):
@@ -65,7 +96,7 @@ def extract_picking_data(pdf_file):
                 if 'PÁGINA' in line.upper() or 'COD VIEJO' in line.upper():
                     continue
                 
-                # Patrón principal
+                # Patrón: LINEA CODIGO RESTO CANTIDAD STOCK ALMACEN
                 match = re.search(
                     r'^(\d+)\s+([A-Z]{2}[A-Z0-9]+)\s+(.+?)\s+(\d+,\d{2})\s+(-?[\d.]+)\s+([A-Z]+)\s*$',
                     line
@@ -81,26 +112,17 @@ def extract_picking_data(pdf_file):
                 stock = float(match.group(5).replace('.', ''))
                 almacen = match.group(6)
                 
-                # Extraer cod_viejo
-                cod_match = re.match(r'^([A-Z]{2}\d+[A-Z]?\d*)\s*(.*)$', resto)
-                if cod_match:
-                    cod_viejo = cod_match.group(1)
-                    articulo = cod_match.group(2).strip()
-                else:
-                    cod_match2 = re.match(r'^([A-Z]{2}\d+[A-Z]?\d*)([A-Z][a-záéíóúñ\*].*)$', resto)
-                    if cod_match2:
-                        cod_viejo = cod_match2.group(1)
-                        articulo = cod_match2.group(2)
-                    else:
-                        parts = resto.split(None, 1)
-                        cod_viejo = parts[0] if parts else resto
-                        articulo = parts[1] if len(parts) > 1 else ''
+                # Separar cod_viejo del artículo
+                cod_viejo, articulo = split_cod_viejo_articulo(resto)
+                articulo = articulo.strip()
+                if not articulo:
+                    articulo = resto
                 
                 all_rows.append({
                     'linea_original': linea,
                     'codigo': codigo,
                     'cod_viejo': cod_viejo,
-                    'articulo': articulo.strip() or resto,
+                    'articulo': articulo,
                     'cantidad': cantidad,
                     'stock': stock,
                     'almacen': almacen
@@ -128,15 +150,15 @@ def process_picking_data(rows):
 
 
 def generate_pdf(data, header_info):
-    """Genera PDF del picking list procesado."""
+    """Genera PDF en formato VERTICAL (A4 portrait)."""
     buffer = BytesIO()
     
     doc = SimpleDocTemplate(
         buffer,
-        pagesize=landscape(A4),
-        rightMargin=1*cm,
-        leftMargin=1*cm,
-        topMargin=1.5*cm,
+        pagesize=A4,  # Vertical: 210mm x 297mm
+        rightMargin=0.8*cm,
+        leftMargin=0.8*cm,
+        topMargin=1*cm,
         bottomMargin=1*cm
     )
     
@@ -144,58 +166,95 @@ def generate_pdf(data, header_info):
     elements = []
     
     # Header
-    title_style = ParagraphStyle('Title', parent=styles['Heading1'], fontSize=16, alignment=TA_CENTER, spaceAfter=5)
+    title_style = ParagraphStyle(
+        'Title', 
+        parent=styles['Heading1'], 
+        fontSize=14, 
+        alignment=TA_CENTER, 
+        spaceAfter=3
+    )
+    
     header_text = f"""
     <b>PICKING LIST N° {header_info.get('numero', '-')}</b><br/>
-    <font size="10">Estado: {header_info.get('estado', 'COMPLETO')} | 
+    <font size="9">
     Fecha: {header_info.get('fecha', datetime.now().strftime('%d/%m/%Y'))} | 
-    Hora: {header_info.get('hora', datetime.now().strftime('%H:%M:%S'))}<br/>
-    <i>Ordenado por Código Viejo - Duplicados consolidados</i></font>
+    Hora: {header_info.get('hora', datetime.now().strftime('%H:%M:%S'))} |
+    Estado: {header_info.get('estado', 'COMPLETO')}<br/>
+    <i>Ordenado por Código Viejo - Duplicados consolidados</i>
+    </font>
     """
     elements.append(Paragraph(header_text, title_style))
-    elements.append(Spacer(1, 0.3*cm))
+    elements.append(Spacer(1, 0.2*cm))
     
-    # Tabla
-    table_data = [['#', 'CÓDIGO', 'COD VIEJO', 'ARTÍCULO', 'CANT', 'STOCK', 'ALM', '✓']]
+    # Tabla con columnas: #, COD VIEJO, ARTÍCULO, CANT, REAL, ✓
+    table_data = [['#', 'COD VIEJO', 'ARTÍCULO', 'CANT', 'REAL', '✓']]
+    
     for row in data:
-        articulo = str(row['articulo'])[:45]
+        articulo = str(row['articulo'])
+        if len(articulo) > 35:
+            articulo = articulo[:33] + '..'
+        
         cant = row['cantidad']
         cant_str = f"{int(cant)}" if cant == int(cant) else f"{cant:.2f}"
-        stock = row['stock']
-        stock_str = f"{int(stock)}" if stock == int(stock) else f"{stock:.0f}"
-        table_data.append([str(row['linea']), str(row['codigo']), str(row['cod_viejo']), 
-                          articulo, cant_str, stock_str, str(row['almacen'])[:6], '☐'])
+        
+        table_data.append([
+            str(row['linea']),
+            str(row['cod_viejo']),
+            articulo,
+            cant_str,
+            '',      # REAL: vacío para anotar cantidad real
+            ''      # LISTO: casilla vacía para tick
+        ])
     
-    col_widths = [0.8*cm, 3.5*cm, 2.5*cm, 10*cm, 1.3*cm, 1.5*cm, 1.5*cm, 0.8*cm]
+    # Anchos para A4 vertical (~19cm útiles)
+    col_widths = [0.8*cm, 2.5*cm, 10*cm, 1.3*cm, 1.8*cm, 1*cm]
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
     
     table.setStyle(TableStyle([
+        # Header verde
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1B5E20')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
-        ('TOPPADDING', (0, 0), (-1, 0), 6),
-        ('ALIGN', (0, 1), (0, -1), 'CENTER'),
-        ('ALIGN', (4, 1), (5, -1), 'RIGHT'),
-        ('ALIGN', (6, 1), (7, -1), 'CENTER'),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 5),
+        ('TOPPADDING', (0, 0), (-1, 0), 5),
+        
+        # Body
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
         ('FONTSIZE', (0, 1), (-1, -1), 7),
         ('BOTTOMPADDING', (0, 1), (-1, -1), 3),
         ('TOPPADDING', (0, 1), (-1, -1), 3),
+        
+        # Alineaciones
+        ('ALIGN', (0, 1), (0, -1), 'CENTER'),   # #
+        ('ALIGN', (1, 1), (1, -1), 'LEFT'),     # COD VIEJO
+        ('ALIGN', (2, 1), (2, -1), 'LEFT'),     # ARTÍCULO
+        ('ALIGN', (3, 1), (3, -1), 'RIGHT'),    # CANT
+        ('ALIGN', (4, 1), (4, -1), 'CENTER'),   # REAL
+        ('ALIGN', (5, 1), (5, -1), 'CENTER'),   # ✓
+        
+        # Bordes
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('BOX', (0, 0), (-1, -1), 1, colors.black),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F5F5')]),
+        
+        # Filas alternadas
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F0F0F0')]),
+        
+        # Columna REAL amarilla para escribir
+        ('BACKGROUND', (4, 1), (4, -1), colors.HexColor('#FFFDE7')),
     ]))
+    
     elements.append(table)
     
     # Footer
-    elements.append(Spacer(1, 0.5*cm))
-    footer = Table([['PREPARO:', '_'*20, 'COMIENZO:', '_'*15], ['CONTROLO:', '_'*20, 'FINALIZADO:', '_'*15]],
-                   colWidths=[2.5*cm, 5*cm, 2.5*cm, 5*cm])
-    footer.setStyle(TableStyle([('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'), ('FONTSIZE', (0, 0), (-1, -1), 9)]))
-    elements.append(footer)
+    elements.append(Spacer(1, 0.4*cm))
+    footer_style = ParagraphStyle('Footer', fontSize=9, alignment=TA_LEFT)
+    footer_text = """
+    <b>PREPARO:</b> __________________ <b>COMIENZO:</b> __________<br/><br/>
+    <b>CONTROLÓ:</b> __________________ <b>FINALIZADO:</b> __________
+    """
+    elements.append(Paragraph(footer_text, footer_style))
     
     doc.build(elements)
     buffer.seek(0)
@@ -203,16 +262,14 @@ def generate_pdf(data, header_info):
 
 
 def merge_with_packing(picking_buffer, original_pdf, packing_start_page):
-    """Combina picking list procesado con packing list original."""
+    """Combina picking procesado + packing list original."""
     output_buffer = BytesIO()
     writer = PdfWriter()
     
-    # 1. Agregar picking list procesado
     picking_reader = PdfReader(picking_buffer)
     for page in picking_reader.pages:
         writer.add_page(page)
     
-    # 2. Agregar packing list original
     original_pdf.seek(0)
     original_reader = PdfReader(original_pdf)
     for i in range(packing_start_page, len(original_reader.pages)):
@@ -234,7 +291,6 @@ def main():
     
     if uploaded_file:
         with st.spinner("Procesando..."):
-            # Guardar copia del archivo para merge posterior
             uploaded_file.seek(0)
             original_copy = BytesIO(uploaded_file.read())
             uploaded_file.seek(0)
@@ -251,7 +307,6 @@ def main():
             df_original = pd.DataFrame(rows)
             duplicados = len(rows) - len(processed_data)
             
-            # Stats
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("Originales", len(rows))
             col2.metric("Consolidadas", len(processed_data))
@@ -261,7 +316,6 @@ def main():
             else:
                 col4.metric("Packing list", "No encontrado")
             
-            # Mostrar duplicados
             if duplicados > 0:
                 dupes = df_original[df_original.duplicated('cod_viejo', keep=False)]
                 with st.expander("Ver duplicados consolidados"):
@@ -271,25 +325,28 @@ def main():
             
             st.divider()
             
-            # Preview
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown("#### Original")
-                st.dataframe(df_original[['linea_original', 'cod_viejo', 'articulo', 'cantidad']].head(15), height=300)
+                st.dataframe(
+                    df_original[['linea_original', 'cod_viejo', 'articulo', 'cantidad']].head(15), 
+                    height=300, use_container_width=True
+                )
             with col2:
                 st.markdown("#### Procesado")
-                st.dataframe(pd.DataFrame(processed_data)[['linea', 'cod_viejo', 'articulo', 'cantidad']].head(15), height=300)
+                df_proc = pd.DataFrame(processed_data)
+                st.dataframe(
+                    df_proc[['linea', 'cod_viejo', 'articulo', 'cantidad']].head(15), 
+                    height=300, use_container_width=True
+                )
             
             st.divider()
             
-            # Generar PDF picking
             picking_buffer = generate_pdf(processed_data, header_info)
             
-            # Opciones de descarga
             st.markdown("### 📄 Descargar PDF")
             
             if packing_start:
-                # Merge con packing list
                 picking_buffer.seek(0)
                 merged_buffer, picking_pages, packing_pages = merge_with_packing(
                     picking_buffer, original_copy, packing_start
@@ -306,11 +363,10 @@ def main():
                     use_container_width=True
                 )
                 
-                # También ofrecer solo el picking
                 picking_buffer.seek(0)
                 with st.expander("Descargar solo el Picking List"):
                     st.download_button(
-                        "⬇️ Solo Picking List (sin packing)",
+                        "⬇️ Solo Picking List",
                         picking_buffer,
                         f"picking_{header_info.get('numero', 'procesado')}_ordenado.pdf",
                         "application/pdf"
@@ -328,3 +384,14 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
+
+---
+
+## **requirements.txt** (sin cambios)
+```
+streamlit>=1.28.0
+pdfplumber>=0.10.0
+pandas>=2.0.0
+reportlab>=4.0.0
+pypdf>=3.0.0
