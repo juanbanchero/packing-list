@@ -23,44 +23,53 @@ st.set_page_config(
 
 
 def split_cod_viejo_articulo(resto):
-    """Separa código viejo del nombre del artículo"""
+    """
+    Separa código viejo del artículo.
+    El código viejo es alfanumérico y termina cuando empieza una palabra real
+    (Mayúscula seguida de minúscula como Tee, Transición, Depósito, etc.)
+    """
     if not resto:
         return '', ''
     
-    # Patrones comunes de inicio de descripción
-    palabras_inicio = [
-        'RECEPT', 'RECEPTACULO', 'CODO', 'TUBO', 'CURVA', 'VALVULA', 'VÁLVULA',
-        'FLEXIBLE', 'FLEX', 'RAMAL', 'BUJE', 'CUPLA', 'TAPON', 'TAPÓN', 'TAPA',
-        'UNION', 'UNIÓN', 'TEE', 'TRANSICION', 'TRANSICIÓN', 'MANGUITO',
-        'PILETA', 'BOCA', 'REJILLA', 'GRAMPA', 'EMBUDO', 'PORTAREJILLA',
-        'POTAREJILLA', 'CANILLA', 'GRIFERIA', 'GRIFERÍA', 'BIDET', 'LAVATORIO',
-        'DEPOSITO', 'DEPÓSITO', 'COLUMNA', 'SELLADOR', 'DECAPANTE', 'CAÑAMO',
-        'TEFLON', 'TEFLÓN', 'GRASA', 'CARTUCHO', 'ACOPLE', 'BOQUILLA',
-        'VIP19', 'VTA38', '0103', '0207', '42000', '72000',
-    ]
+    resto = resto.strip()
     
-    # Buscar si alguna palabra clave está en el resto
-    resto_upper = resto.upper()
-    for palabra in palabras_inicio:
-        idx = resto_upper.find(palabra)
-        if idx > 0:
-            return resto[:idx].strip(), resto[idx:]
-    
-    # Fallback: buscar mayúscula seguida de minúscula
+    # Buscar Mayúscula + minúscula (inicio de palabra real)
     match = re.search(r'[A-Z][a-záéíóúñ]', resto)
     if match:
         pos = match.start()
         if pos > 0:
-            return resto[:pos].strip(), resto[pos:]
+            cod_viejo = resto[:pos].strip()
+            articulo = resto[pos:].strip()
+            cod_viejo = cod_viejo.rstrip('* ').strip()
+            if '**' in resto[:pos]:
+                cod_viejo = cod_viejo + ' **'
+            return cod_viejo, articulo
     
-    # Fallback 2: buscar espacio o asterisco
-    match = re.search(r'[\s\*]', resto)
+    # Buscar espacio + comillas
+    match = re.search(r'\s+"', resto)
     if match:
         pos = match.start()
-        if pos > 0:
-            return resto[:pos].strip(), resto[pos:].strip()
+        cod_viejo = resto[:pos].strip()
+        articulo = resto[pos:].strip().lstrip('"').strip()
+        return cod_viejo, articulo
     
-    return resto.strip(), ''
+    # Buscar palabras MAYÚSCULAS conocidas
+    palabras_mayus = ['CODO', 'TUBO', 'FLEX', 'CURVA', 'GRAMPA', 'GRASA', 'SELLADOR', 
+                      'DECAPANTE', 'TEFLON', 'CAÑAMO', 'RECEPTACULO', 'RECEPT']
+    resto_upper = resto.upper()
+    for palabra in palabras_mayus:
+        idx = resto_upper.find(' ' + palabra)
+        if idx >= 0:
+            cod_viejo = resto[:idx].strip()
+            articulo = resto[idx+1:].strip()
+            return cod_viejo, articulo
+    
+    # Último recurso
+    parts = resto.split(' ', 1)
+    if len(parts) == 2:
+        return parts[0].strip(), parts[1].strip()
+    
+    return resto, ''
 
 
 def extract_picking_data(pdf_file):
@@ -116,7 +125,6 @@ def extract_picking_data(pdf_file):
                 almacen = match.group(6)
                 
                 cod_viejo, articulo = split_cod_viejo_articulo(resto)
-                articulo = articulo.strip()
                 if not articulo:
                     articulo = resto
                 
@@ -165,14 +173,9 @@ def generate_pdf(data, header_info):
     styles = getSampleStyleSheet()
     elements = []
     
-    # Estilo para celdas con wrap automático
-    cell_style = ParagraphStyle(
-        'CellStyle',
-        parent=styles['Normal'],
-        fontSize=6,
-        leading=7,
-        wordWrap='CJK',
-    )
+    # Estilos para celdas con wrap automático
+    cell_style = ParagraphStyle('CellStyle', parent=styles['Normal'], fontSize=6, leading=7, wordWrap='CJK')
+    cod_style = ParagraphStyle('CodStyle', parent=styles['Normal'], fontSize=6, leading=7)
     
     title_style = ParagraphStyle(
         'Title', 
@@ -196,12 +199,13 @@ def generate_pdf(data, header_info):
         stock = row['stock']
         stock_str = str(int(stock)) if stock == int(stock) else f"{stock:.0f}"
         
-        # Paragraph para wrap automático - NO truncar
+        # Paragraph para wrap automático
+        cod_p = Paragraph(str(row['cod_viejo']), cod_style)
         articulo_p = Paragraph(str(row['articulo']), cell_style)
         
         table_data.append([
             str(row['linea']),
-            str(row['cod_viejo']),
+            cod_p,
             articulo_p,
             stock_str,
             cant_str,
