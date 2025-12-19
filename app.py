@@ -23,17 +23,43 @@ st.set_page_config(
 
 
 def split_cod_viejo_articulo(resto):
+    """Separa código viejo del nombre del artículo"""
     if not resto:
         return '', ''
+    
+    # Patrones comunes de inicio de descripción
+    palabras_inicio = [
+        'RECEPT', 'RECEPTACULO', 'CODO', 'TUBO', 'CURVA', 'VALVULA', 'VÁLVULA',
+        'FLEXIBLE', 'FLEX', 'RAMAL', 'BUJE', 'CUPLA', 'TAPON', 'TAPÓN', 'TAPA',
+        'UNION', 'UNIÓN', 'TEE', 'TRANSICION', 'TRANSICIÓN', 'MANGUITO',
+        'PILETA', 'BOCA', 'REJILLA', 'GRAMPA', 'EMBUDO', 'PORTAREJILLA',
+        'POTAREJILLA', 'CANILLA', 'GRIFERIA', 'GRIFERÍA', 'BIDET', 'LAVATORIO',
+        'DEPOSITO', 'DEPÓSITO', 'COLUMNA', 'SELLADOR', 'DECAPANTE', 'CAÑAMO',
+        'TEFLON', 'TEFLÓN', 'GRASA', 'CARTUCHO', 'ACOPLE', 'BOQUILLA',
+        'VIP19', 'VTA38', '0103', '0207', '42000', '72000',
+    ]
+    
+    # Buscar si alguna palabra clave está en el resto
+    resto_upper = resto.upper()
+    for palabra in palabras_inicio:
+        idx = resto_upper.find(palabra)
+        if idx > 0:
+            return resto[:idx].strip(), resto[idx:]
+    
+    # Fallback: buscar mayúscula seguida de minúscula
     match = re.search(r'[A-Z][a-záéíóúñ]', resto)
     if match:
         pos = match.start()
         if pos > 0:
             return resto[:pos].strip(), resto[pos:]
-    match = re.search(r'[\s\*\"]', resto)
+    
+    # Fallback 2: buscar espacio o asterisco
+    match = re.search(r'[\s\*]', resto)
     if match:
         pos = match.start()
-        return resto[:pos].strip(), resto[pos:].strip()
+        if pos > 0:
+            return resto[:pos].strip(), resto[pos:].strip()
+    
     return resto.strip(), ''
 
 
@@ -130,10 +156,10 @@ def generate_pdf(data, header_info):
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        rightMargin=0.4*cm,
-        leftMargin=0.4*cm,
-        topMargin=0.8*cm,
-        bottomMargin=0.8*cm
+        rightMargin=0.3*cm,
+        leftMargin=0.3*cm,
+        topMargin=0.6*cm,
+        bottomMargin=0.6*cm
     )
     
     styles = getSampleStyleSheet()
@@ -145,33 +171,32 @@ def generate_pdf(data, header_info):
         parent=styles['Normal'],
         fontSize=6,
         leading=7,
+        wordWrap='CJK',
     )
     
     title_style = ParagraphStyle(
         'Title', 
         parent=styles['Heading1'], 
-        fontSize=12, 
+        fontSize=11, 
         alignment=TA_CENTER, 
         spaceAfter=2
     )
     
-    header_text = f"""<b>PICKING LIST N° {header_info.get('numero', '-')}</b> | 
-    Fecha: {header_info.get('fecha', datetime.now().strftime('%d/%m/%Y'))} | 
-    <i>Ordenado por Cód. Viejo - Duplicados consolidados</i>"""
+    header_text = f"""<b>PICKING LIST N° {header_info.get('numero', '-')}</b> | Fecha: {header_info.get('fecha', '-')} | <i>Ordenado por Cód. Viejo</i>"""
     elements.append(Paragraph(header_text, title_style))
-    elements.append(Spacer(1, 0.15*cm))
+    elements.append(Spacer(1, 0.1*cm))
     
     # Header de tabla
     table_data = [['#', 'COD VIEJO', 'ARTÍCULO', 'STK', 'CANT', 'REAL', '✓']]
     
     for row in data:
         cant = row['cantidad']
-        cant_str = f"{int(cant)}" if cant == int(cant) else f"{cant:.2f}"
+        cant_str = str(int(cant)) if cant == int(cant) else f"{cant:.2f}"
         
         stock = row['stock']
-        stock_str = f"{int(stock)}" if stock == int(stock) else f"{stock:.0f}"
+        stock_str = str(int(stock)) if stock == int(stock) else f"{stock:.0f}"
         
-        # Usar Paragraph para artículo (permite wrap automático)
+        # Paragraph para wrap automático - NO truncar
         articulo_p = Paragraph(str(row['articulo']), cell_style)
         
         table_data.append([
@@ -184,8 +209,8 @@ def generate_pdf(data, header_info):
             ''
         ])
     
-    # Anchos optimizados para A4 vertical con márgenes mínimos
-    col_widths = [0.5*cm, 2.2*cm, 12.5*cm, 1.2*cm, 1*cm, 1.3*cm, 0.7*cm]
+    # Anchos optimizados para A4 vertical
+    col_widths = [0.5*cm, 2.2*cm, 13.2*cm, 1.1*cm, 0.9*cm, 1.2*cm, 0.6*cm]
     
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
     
@@ -196,14 +221,14 @@ def generate_pdf(data, header_info):
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, 0), 7),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 4),
-        ('TOPPADDING', (0, 0), (-1, 0), 4),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 3),
+        ('TOPPADDING', (0, 0), (-1, 0), 3),
         
         # Body
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
         ('FONTSIZE', (0, 1), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 2),
-        ('TOPPADDING', (0, 1), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 1),
+        ('TOPPADDING', (0, 1), (-1, -1), 1),
         
         # Alineaciones
         ('ALIGN', (0, 1), (0, -1), 'CENTER'),
@@ -229,9 +254,9 @@ def generate_pdf(data, header_info):
     elements.append(table)
     
     # Footer
-    elements.append(Spacer(1, 0.3*cm))
+    elements.append(Spacer(1, 0.2*cm))
     footer_style = ParagraphStyle('Footer', fontSize=8, alignment=TA_LEFT)
-    footer_text = """<b>PREPARO:</b> ________________________________________ <b>COMIENZO:</b> ________________________________________  <br/><br/> <b>CONTROLÓ:</b> ______________________________________ <b>FINALIZADO:</b> ______________________________________"""
+    footer_text = """<b>PREPARO:</b> __________ <b>COMIENZO:</b> ________ | <b>CONTROLÓ:</b> __________ <b>FINALIZADO:</b> ________"""
     elements.append(Paragraph(footer_text, footer_style))
     
     doc.build(elements)
