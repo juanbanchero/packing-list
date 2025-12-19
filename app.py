@@ -402,8 +402,8 @@ def generate_pdf(data, header_info):
     elements.append(Spacer(1, 0.4*cm))
     footer_style = ParagraphStyle('Footer', fontSize=9, alignment=TA_LEFT)
     footer_text = """
-    <b>PREPARO:</b> __________________ <b>COMIENZO:</b> __________<br/><br/>
-    <b>CONTROLÓ:</b> __________________ <b>FINALIZADO:</b> __________
+    <b>PREPARO:</b> _______________________________ <b>COMIENZO:</b> ___________________________________<br/><br/>
+    <b>CONTROLÓ:</b> ______________________________ <b>FINALIZADO:</b> __________________________________
     """
     elements.append(Paragraph(footer_text, footer_style))
     
