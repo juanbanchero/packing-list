@@ -130,73 +130,82 @@ def generate_pdf(data, header_info):
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
-        rightMargin=0.5*cm,
-        leftMargin=0.5*cm,
-        topMargin=1*cm,
-        bottomMargin=1*cm
+        rightMargin=0.4*cm,
+        leftMargin=0.4*cm,
+        topMargin=0.8*cm,
+        bottomMargin=0.8*cm
     )
     
     styles = getSampleStyleSheet()
     elements = []
     
+    # Estilo para celdas con wrap automático
+    cell_style = ParagraphStyle(
+        'CellStyle',
+        parent=styles['Normal'],
+        fontSize=6,
+        leading=7,
+    )
+    
     title_style = ParagraphStyle(
         'Title', 
         parent=styles['Heading1'], 
-        fontSize=14, 
+        fontSize=12, 
         alignment=TA_CENTER, 
-        spaceAfter=3
+        spaceAfter=2
     )
     
-    header_text = f"""
-    <b>PICKING LIST N° {header_info.get('numero', '-')}</b><br/>
-    <font size="9">
+    header_text = f"""<b>PICKING LIST N° {header_info.get('numero', '-')}</b> | 
     Fecha: {header_info.get('fecha', datetime.now().strftime('%d/%m/%Y'))} | 
-    Hora: {header_info.get('hora', datetime.now().strftime('%H:%M:%S'))} |
-    Estado: {header_info.get('estado', 'COMPLETO')}<br/>
-    <i>Ordenado por Código Viejo - Duplicados consolidados</i>
-    </font>
-    """
+    <i>Ordenado por Cód. Viejo - Duplicados consolidados</i>"""
     elements.append(Paragraph(header_text, title_style))
-    elements.append(Spacer(1, 0.2*cm))
+    elements.append(Spacer(1, 0.15*cm))
     
-    table_data = [['#', 'COD VIEJO', 'ARTÍCULO', 'STOCK', 'CANT', 'REAL', '✓']]
+    # Header de tabla
+    table_data = [['#', 'COD VIEJO', 'ARTÍCULO', 'STK', 'CANT', 'REAL', '✓']]
     
     for row in data:
-        articulo = str(row['articulo'])
-        if len(articulo) > 45:
-            articulo = articulo[:43] + '..'
-        
         cant = row['cantidad']
         cant_str = f"{int(cant)}" if cant == int(cant) else f"{cant:.2f}"
         
         stock = row['stock']
         stock_str = f"{int(stock)}" if stock == int(stock) else f"{stock:.0f}"
         
+        # Usar Paragraph para artículo (permite wrap automático)
+        articulo_p = Paragraph(str(row['articulo']), cell_style)
+        
         table_data.append([
             str(row['linea']),
             str(row['cod_viejo']),
-            articulo,
+            articulo_p,
             stock_str,
             cant_str,
             '',
             ''
         ])
     
-    col_widths = [0.6*cm, 2.3*cm, 9.5*cm, 1.3*cm, 1*cm, 1.5*cm, 0.8*cm]
+    # Anchos optimizados para A4 vertical con márgenes mínimos
+    col_widths = [0.5*cm, 2.2*cm, 12.5*cm, 1.2*cm, 1*cm, 1.3*cm, 0.7*cm]
+    
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
     
     table.setStyle(TableStyle([
+        # Header
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1B5E20')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 5),
-        ('TOPPADDING', (0, 0), (-1, 0), 5),
+        ('FONTSIZE', (0, 0), (-1, 0), 7),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 4),
+        ('TOPPADDING', (0, 0), (-1, 0), 4),
+        
+        # Body
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 7),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 3),
-        ('TOPPADDING', (0, 1), (-1, -1), 3),
+        ('FONTSIZE', (0, 1), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 2),
+        ('TOPPADDING', (0, 1), (-1, -1), 2),
+        
+        # Alineaciones
         ('ALIGN', (0, 1), (0, -1), 'CENTER'),
         ('ALIGN', (1, 1), (1, -1), 'LEFT'),
         ('ALIGN', (2, 1), (2, -1), 'LEFT'),
@@ -204,20 +213,25 @@ def generate_pdf(data, header_info):
         ('ALIGN', (4, 1), (4, -1), 'RIGHT'),
         ('ALIGN', (5, 1), (5, -1), 'CENTER'),
         ('ALIGN', (6, 1), (6, -1), 'CENTER'),
+        ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
+        
+        # Bordes
         ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
         ('BOX', (0, 0), (-1, -1), 1, colors.black),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F0F0F0')]),
+        
+        # Colores alternados
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F5F5')]),
+        
+        # Columna REAL amarilla
         ('BACKGROUND', (5, 1), (5, -1), colors.HexColor('#FFFDE7')),
     ]))
     
     elements.append(table)
     
-    elements.append(Spacer(1, 0.4*cm))
-    footer_style = ParagraphStyle('Footer', fontSize=9, alignment=TA_LEFT)
-    footer_text = """
-    <b>PREPARO:</b> ________________________________________ <b>COMIENZO:</b> ________________________________________<br/><br/>
-    <b>CONTROLÓ:</b> ______________________________________ <b>FINALIZADO:</b> ______________________________________   
-    """
+    # Footer
+    elements.append(Spacer(1, 0.3*cm))
+    footer_style = ParagraphStyle('Footer', fontSize=8, alignment=TA_LEFT)
+    footer_text = """<b>PREPARO:</b> ________________________________________ <b>COMIENZO:</b> ________________________________________  <br/><br/> <b>CONTROLÓ:</b> ______________________________________ <b>FINALIZADO:</b> ______________________________________"""
     elements.append(Paragraph(footer_text, footer_style))
     
     doc.build(elements)
