@@ -384,14 +384,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
-
----
-
-## **requirements.txt** (sin cambios)
-```
-streamlit>=1.28.0
-pdfplumber>=0.10.0
-pandas>=2.0.0
-reportlab>=4.0.0
-pypdf>=3.0.0
