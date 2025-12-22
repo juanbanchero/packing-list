@@ -173,16 +173,16 @@ def generate_pdf(data, header_info):
     styles = getSampleStyleSheet()
     elements = []
     
-    # Estilos para celdas con wrap automático
-    cell_style = ParagraphStyle('CellStyle', parent=styles['Normal'], fontSize=6, leading=7, wordWrap='CJK')
-    cod_style = ParagraphStyle('CodStyle', parent=styles['Normal'], fontSize=6, leading=7)
+    # Estilos para celdas con wrap automático - 10pt
+    cell_style = ParagraphStyle('CellStyle', parent=styles['Normal'], fontSize=10, leading=11, wordWrap='CJK')
+    cod_style = ParagraphStyle('CodStyle', parent=styles['Normal'], fontSize=10, leading=11)
     
     title_style = ParagraphStyle(
         'Title', 
         parent=styles['Heading1'], 
-        fontSize=11, 
+        fontSize=12, 
         alignment=TA_CENTER, 
-        spaceAfter=2
+        spaceAfter=3
     )
     
     header_text = f"""<b>PICKING LIST N° {header_info.get('numero', '-')}</b> | Fecha: {header_info.get('fecha', '-')} | <i>Ordenado por Cód. Viejo</i>"""
@@ -213,26 +213,26 @@ def generate_pdf(data, header_info):
             ''
         ])
     
-    # Anchos optimizados para A4 vertical
-    col_widths = [0.5*cm, 2.2*cm, 13.2*cm, 1.1*cm, 0.9*cm, 1.2*cm, 0.6*cm]
+    # Anchos optimizados para A4 vertical con 10pt
+    col_widths = [0.6*cm, 2.4*cm, 12.4*cm, 1.1*cm, 1*cm, 1.4*cm, 0.8*cm]
     
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
     
     table.setStyle(TableStyle([
-        # Header
+        # Header 10pt
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1B5E20')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 7),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 3),
-        ('TOPPADDING', (0, 0), (-1, 0), 3),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 4),
+        ('TOPPADDING', (0, 0), (-1, 0), 4),
         
-        # Body
+        # Body 10pt
         ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-        ('FONTSIZE', (0, 1), (-1, -1), 6),
-        ('BOTTOMPADDING', (0, 1), (-1, -1), 1),
-        ('TOPPADDING', (0, 1), (-1, -1), 1),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 2),
+        ('TOPPADDING', (0, 1), (-1, -1), 2),
         
         # Alineaciones
         ('ALIGN', (0, 1), (0, -1), 'CENTER'),
@@ -258,8 +258,8 @@ def generate_pdf(data, header_info):
     elements.append(table)
     
     # Footer
-    elements.append(Spacer(1, 0.2*cm))
-    footer_style = ParagraphStyle('Footer', fontSize=8, alignment=TA_LEFT)
+    elements.append(Spacer(1, 0.3*cm))
+    footer_style = ParagraphStyle('Footer', fontSize=10, alignment=TA_LEFT)
     footer_text = """<b>PREPARO:</b> __________ <b>COMIENZO:</b> ________ | <b>CONTROLÓ:</b> __________ <b>FINALIZADO:</b> ________"""
     elements.append(Paragraph(footer_text, footer_style))
     
