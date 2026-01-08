@@ -55,7 +55,8 @@ def split_cod_viejo_articulo(resto):
     
     # Buscar palabras MAYÚSCULAS conocidas
     palabras_mayus = ['CODO', 'TUBO', 'FLEX', 'CURVA', 'GRAMPA', 'GRASA', 'SELLADOR', 
-                      'DECAPANTE', 'TEFLON', 'CAÑAMO', 'RECEPTACULO', 'RECEPT']
+                      'DECAPANTE', 'TEFLON', 'CAÑAMO', 'RECEPTACULO', 'RECEPT', 'CABINA',
+                      'PILETA', 'RAMAL', 'CUPLA', 'CANILLA', 'LLAVE', 'REG.', 'CONJ.']
     resto_upper = resto.upper()
     for palabra in palabras_mayus:
         idx = resto_upper.find(' ' + palabra)
@@ -81,7 +82,8 @@ def extract_picking_data(pdf_file):
         for page_num, page in enumerate(pdf.pages):
             text = page.extract_text() or ""
             
-            if "Codigo Cliente" in text and "LN" in text and "Liberado" in text:
+            # Detectar packing list (tiene "Codigo Cliente" y "LN")
+            if "Codigo Cliente" in text and "LN" in text:
                 packing_start_page = page_num
                 break
             
@@ -89,7 +91,7 @@ def extract_picking_data(pdf_file):
                 n_match = re.search(r'N[°º]:\s*(\d+)', text)
                 if n_match:
                     header_info['numero'] = n_match.group(1)
-                fecha_match = re.search(r'FECHA:\s*(\d{2}/\d{2}/\d{4})', text)
+                fecha_match = re.search(r'FECHA:\s*(\d{1,2}/\d{1,2}/\d{4})', text)
                 if fecha_match:
                     header_info['fecha'] = fecha_match.group(1)
                 hora_match = re.search(r'HORA:\s*(\d{2}:\d{2}:\d{2})', text)
@@ -106,11 +108,13 @@ def extract_picking_data(pdf_file):
                 
                 if line.upper().startswith(('PICKING LIST', 'COD ', 'N°:', 'FECHA:', 'HORA:', 'ESTADO:', 'PREPARO:', 'CONTROLO:')):
                     continue
-                if 'PÁGINA' in line.upper() or 'COD VIEJO' in line.upper():
+                if 'PÁGINA' in line.upper() or 'COD VIEJO' in line.upper() or 'ARTICULO' in line.upper():
                     continue
                 
+                # Patrón flexible: soporta cantidad entera (12) o con decimales (12,00)
+                # Soporta stock con punto de miles (3.228) o simple (78)
                 match = re.search(
-                    r'^(\d+)\s+([A-Z]{2}[A-Z0-9]+)\s+(.+?)\s+(\d+,\d{2})\s+(-?[\d.]+)\s+([A-Z]+)\s*$',
+                    r'^(\d+)\s+([A-Z]{2}[A-Z0-9]+)\s+(.+?)\s+(\d+(?:,\d{2})?)\s+(-?[\d.,]+)\s+([A-Z]+)\s*$',
                     line
                 )
                 
@@ -120,8 +124,15 @@ def extract_picking_data(pdf_file):
                 linea = int(match.group(1))
                 codigo = match.group(2)
                 resto = match.group(3)
-                cantidad = float(match.group(4).replace(',', '.'))
-                stock = float(match.group(5).replace('.', ''))
+                
+                # Parsear cantidad (puede ser "12" o "12,00")
+                cantidad_str = match.group(4).replace(',', '.')
+                cantidad = float(cantidad_str)
+                
+                # Parsear stock (puede ser "78", "3.228", "-5")
+                stock_str = match.group(5).replace('.', '').replace(',', '.')
+                stock = float(stock_str)
+                
                 almacen = match.group(6)
                 
                 cod_viejo, articulo = split_cod_viejo_articulo(resto)
