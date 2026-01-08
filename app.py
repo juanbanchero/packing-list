@@ -25,50 +25,34 @@ st.set_page_config(
 def split_cod_viejo_articulo(resto):
     """
     Separa código viejo del artículo.
-    El código viejo es alfanumérico y termina cuando empieza una palabra real
-    (Mayúscula seguida de minúscula como Tee, Transición, Depósito, etc.)
+    1. Primero busca Mayúscula+minúscula (código pegado al artículo)
+    2. Si no encuentra, divide por el primer espacio
+    Los ** van con el artículo, no con el código.
     """
     if not resto:
         return '', ''
     
     resto = resto.strip()
     
-    # Buscar Mayúscula + minúscula (inicio de palabra real)
+    # Primero buscar Mayúscula+minúscula (código pegado al artículo)
     match = re.search(r'[A-Z][a-záéíóúñ]', resto)
     if match:
         pos = match.start()
         if pos > 0:
             cod_viejo = resto[:pos].strip()
             articulo = resto[pos:].strip()
-            cod_viejo = cod_viejo.rstrip('* ').strip()
-            if '**' in resto[:pos]:
-                cod_viejo = cod_viejo + ' **'
+            # Si el código termina con **, moverlo al artículo
+            if cod_viejo.endswith('**'):
+                cod_viejo = cod_viejo[:-2].strip()
+                articulo = '** ' + articulo
             return cod_viejo, articulo
     
-    # Buscar espacio + comillas
-    match = re.search(r'\s+"', resto)
-    if match:
-        pos = match.start()
-        cod_viejo = resto[:pos].strip()
-        articulo = resto[pos:].strip().lstrip('"').strip()
+    # Si no encontró, dividir por el primer espacio
+    if ' ' in resto:
+        parts = resto.split(' ', 1)
+        cod_viejo = parts[0].strip()
+        articulo = parts[1].strip()
         return cod_viejo, articulo
-    
-    # Buscar palabras MAYÚSCULAS conocidas
-    palabras_mayus = ['CODO', 'TUBO', 'FLEX', 'CURVA', 'GRAMPA', 'GRASA', 'SELLADOR', 
-                      'DECAPANTE', 'TEFLON', 'CAÑAMO', 'RECEPTACULO', 'RECEPT', 'CABINA',
-                      'PILETA', 'RAMAL', 'CUPLA', 'CANILLA', 'LLAVE', 'REG.', 'CONJ.']
-    resto_upper = resto.upper()
-    for palabra in palabras_mayus:
-        idx = resto_upper.find(' ' + palabra)
-        if idx >= 0:
-            cod_viejo = resto[:idx].strip()
-            articulo = resto[idx+1:].strip()
-            return cod_viejo, articulo
-    
-    # Último recurso
-    parts = resto.split(' ', 1)
-    if len(parts) == 2:
-        return parts[0].strip(), parts[1].strip()
     
     return resto, ''
 
